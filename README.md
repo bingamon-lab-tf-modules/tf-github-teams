@@ -27,3 +27,4 @@ This project is a template for creating OpenTofu and Terraform modules.
 An overview of the module goes here
 
 Additional Terraform Module documentation is available [here](modules/MODULE_NAME/README.md)
+
