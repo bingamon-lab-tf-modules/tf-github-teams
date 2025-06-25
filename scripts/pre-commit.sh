@@ -118,7 +118,7 @@ function generate_terraform_docs() {
 
 	if [[ -f ".terraform-docs.yml" ]];
 	then
-		terraform-docs --config .terraform-docs.yml ${MODULE_HOME} || {
+		terraform-docs --config .terraform-docs.yml "${MODULE_HOME}" || {
 			error "Failed to generate the Terraform documentation."
 			return 1
 		}
