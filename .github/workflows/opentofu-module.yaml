@@ -126,6 +126,27 @@ jobs:
           fi
           echo "✅ OpenTofu format check passed"
 
+      - id: opentofu_docs_check
+        name: OpenTofu Documentation Check
+        shell: devenv shell --quiet bash -- -e {0}
+        run: |
+          echo "📚 Checking OpenTofu documentation..."
+          if command -v terraform-docs &> /dev/null;
+          then
+            # Check if README needs updating
+            if ! terraform-docs --output-check --config .terraform-docs.yml ${MODULE_HOME};
+            then
+              echo "❌ Module README.md is out of date!"
+              echo "💡 Run: tofu-docs ${MODULE_HOME} locally to update the README.md"
+              exit 1
+            fi
+            echo "✅ Documentation is up to date"
+            exit 0
+          else
+            echo "⚠️ terraform-docs not available, documentation check failed"
+            exit 1
+          fi
+
       - id: opentofu_init
         name: OpenTofu Init
         shell: devenv shell --quiet bash -- -e {0}
@@ -151,27 +172,6 @@ jobs:
             exit 1
           fi
           echo "✅ OpenTofu validation passed"
-
-      - id: opentofu_docs_check
-        name: OpenTofu Documentation Check
-        shell: devenv shell --quiet bash -- -e {0}
-        run: |
-          echo "📚 Checking OpenTofu documentation..."
-          if command -v terraform-docs &> /dev/null;
-          then
-            # Check if README needs updating
-            if ! terraform-docs --output-check --config .terraform-docs.yml ${MODULE_HOME};
-            then
-              echo "❌ Module README.md is out of date!"
-              echo "💡 Run: tofu-docs ${MODULE_HOME} locally to update the README.md"
-              exit 1
-            fi
-            echo "✅ Documentation is up to date"
-            exit 0
-          else
-            echo "⚠️ terraform-docs not available, documentation check failed"
-            exit 1
-          fi
 
       - id: opentofu_security_scan
         name: OpenTofu Security Scan

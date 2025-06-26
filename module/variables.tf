@@ -39,9 +39,9 @@ variable "github_teams" {
     ])
     error_message = <<EOT
     ❌ Team validation has failed.
-    
+
     All teams must have a non-empty 'name' field.
-    
+
     Please check your team configuration and ensure every team has a valid name.
     EOT
   }
@@ -53,9 +53,9 @@ variable "github_teams" {
     ])
     error_message = <<EOT
     ❌ Team privacy validation has failed.
-    
+
     Team privacy must be one of 'secret', 'closed', or 'visible'.
-    
+
     Please check your team configuration and ensure every team has a valid privacy setting.
     EOT
   }
@@ -68,9 +68,9 @@ variable "github_teams" {
     ])
     error_message = <<EOT
     ❌ Team member validation has failed.
-    
+
     All team members must have a non-empty 'username' field.
-    
+
     Please check your team member configurations.
     EOT
   }
@@ -84,9 +84,9 @@ variable "github_teams" {
     ])
     error_message = <<EOT
     ❌ Team member role validation has failed.
-    
+
     Member roles must be either 'member' or 'maintainer'.
-    
+
     Please check your team member role assignments.
     EOT
   }
@@ -95,9 +95,9 @@ variable "github_teams" {
     condition     = length(var.github_teams) == length(distinct([for team in var.github_teams : team.name]))
     error_message = <<EOT
     ❌ Duplicate team names detected.
-    
+
     Each team must have a unique name within the organization.
-    
+
     Please check for duplicate team names in your configuration.
     EOT
   }
