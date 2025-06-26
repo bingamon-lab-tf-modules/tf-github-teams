@@ -13,11 +13,9 @@ declare MODULE_TESTS
 
 MODULE_HOME="$(pwd)/module"
 
-if [[ -d "tests" ]];
-then
+if [[ -d "tests" ]]; then
 	MODULE_TESTS="tests"
-elif [[ -d "module" ]];
-then
+elif [[ -d "module" ]]; then
 	MODULE_TESTS="module"
 else
 	echo "No module or tests folder found."
@@ -116,8 +114,7 @@ function generate_terraform_docs() {
 	local README_FILES
 	README_FILES=$(find . -name "README.md" -type f)
 
-	if [[ -f ".terraform-docs.yml" ]];
-	then
+	if [[ -f ".terraform-docs.yml" ]]; then
 		terraform-docs --config .terraform-docs.yml "${MODULE_HOME}" || {
 			error "Failed to generate the Terraform documentation."
 			return 1
