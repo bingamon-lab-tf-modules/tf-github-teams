@@ -26,6 +26,17 @@ on:  # yamllint disable-line rule:truthy
       - candidate # Release Candidates
     paths:
       - "module/**" # Only run when the module is updated
+  # Manual Trigger
+  workflow_dispatch:
+    inputs:
+      changelog_tool:
+        description: 'Choose changelog generation tool (convco uses conventional commits, github auto-generates from PRs)'
+        required: false
+        type: choice
+        default: 'github'
+        options:
+          - 'github'
+          - 'convco'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -45,6 +56,11 @@ env:
 
   # Nix
   NIXPKGS_ALLOW_UNFREE: 1
+
+  # Semantic Versioning changelog tool (convco or github)
+  # - Use convco for conventional commits
+  # - Or use GitHub for auto-generated changelog from PRs
+  SEMVER_CHANGELOG_TOOL: ${{ vars.SEMVER_CHANGELOG_TOOL || 'github' }}
 
 defaults:
   run:
@@ -91,7 +107,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // Semantic version types to match for (case insensitive)
-            const coreVersionTypes = ['major', 'minor', 'patch'];
+            const coreVersionTypes = ['major', 'minor', 'patch', 'none'];
 
             /**
              * Extracts version type from a label, handling optional prefixes and suffixes
@@ -184,10 +200,10 @@ jobs:
             if (versionLabelsInfo.length === 0) {
 
               const exampleLabels = [
-                'major', 'minor', 'patch',
-                'semver major', 'semver minor', 'semver patch', 
-                'major-rc', 'minor candidate', 'patch-alpha',
-                'version-major', 'v_minor', 'PATCH'
+                'major', 'minor', 'patch', 'none',
+                'semver major', 'semver minor', 'semver patch', 'semver none',
+                'major-rc', 'minor candidate', 'patch-alpha', 'none-docs',
+                'version-major', 'v_minor', 'PATCH', 'NONE'
               ];
               core.setFailed(`No version labels found! Please add a label containing one of: ${coreVersionTypes.join(', ').toUpperCase()}. Examples: ${exampleLabels.join(', ')}`);
               return;
@@ -259,6 +275,11 @@ jobs:
               case 'patch':
                 newPatch += 1;
                 break;
+              case 'none':
+                // No version increment for 'none' type
+                break;
+              default:
+                throw new Error(`Unknown version type: ${labelInfo.versionType}`);
             }
 
             // Construct new version
@@ -273,10 +294,19 @@ jobs:
             console.log(`Current version: ${currentVersion}`);
             console.log(`New version: ${newVersion}`);
             console.log(`New tag: ${newTag}`);
+            console.log(`Version bump required: ${labelInfo.versionType !== 'none'}`);
+
+            if (labelInfo.versionType === 'none') {
+              console.log('⚠️ No version bump will be performed (none label detected)');
+              console.log('   - No git tag will be created');
+              console.log('   - No GitHub release will be created');
+              console.log('   - This is typically used for documentation or non-code changes');
+            }
 
             // Set outputs directly
             core.setOutput('semver', newVersion);
             core.setOutput('tag', newTag);
+            core.setOutput('version-bump', labelInfo.versionType !== 'none');
             core.setOutput('version-type', labelInfo.versionType);
             core.setOutput('is-candidate', labelInfo.isCandidate);
 
@@ -290,6 +320,7 @@ jobs:
     outputs:
       semver: ${{ steps.calculate_semver.outputs.semver }}
       tag: ${{ steps.calculate_semver.outputs.tag }}
+      version-bump: ${{ steps.calculate_semver.outputs.version-bump }}
       version-type: ${{ steps.calculate_semver.outputs.version-type }}
       is-candidate: ${{ steps.calculate_semver.outputs.is-candidate }}
 
@@ -301,7 +332,8 @@ jobs:
     name: Create Tag
 
     # Only run on push events
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' &&
+      needs.semantic-version.outputs.version-bump == 'true'
 
     runs-on: ${{ matrix.os }}
 
@@ -374,9 +406,10 @@ jobs:
   release:
     name: Create Release
 
-    # Only run on push events and if the tag was created
+    # Only run on push events, if version bump is needed, and if the tag was created
     if: |
       github.event_name == 'push' &&
+      needs.semantic-version.outputs.version-bump == 'true' &&
       needs.tag.outputs.tag-created == 'true'
 
     runs-on: ${{ matrix.os }}
@@ -427,57 +460,69 @@ jobs:
 
       - id: generate_changelog
         name: Generate changelog with convco
+        if: |
+          (github.event.inputs.changelog_tool == 'convco') ||
+          (github.event.inputs.changelog_tool == null && vars.SEMVER_CHANGELOG_TOOL == 'convco') ||
+          (github.event.inputs.changelog_tool == null && vars.SEMVER_CHANGELOG_TOOL == null && env.SEMVER_CHANGELOG_TOOL == 'convco')
         shell: devenv shell --quiet bash -- -e {0}
         run: |
           echo "📝 Generating changelog..."
 
-          # Get the current tag that was just created
+          CHANGELOG_FILE="/tmp/changelog.md"
+          echo "CHANGELOG_FILE=${CHANGELOG_FILE}" >> $GITHUB_OUTPUT
+
+          # Get the current tag that was just created and strip the 'v' prefix
           CURRENT_TAG="${{ needs.semantic-version.outputs.tag }}"
+          CURRENT_TAG_STRIPPED="$(echo ${CURRENT_TAG} | sed 's/^v//')"
           echo "Current tag: ${CURRENT_TAG}"
+          echo "Version (stripped): ${CURRENT_TAG_STRIPPED}"
 
           # Find the previous tag (excluding the current one that was just created)
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
+          PREVIOUS_TAG_STRIPPED="$(echo ${PREVIOUS_TAG} | sed 's/^v//')"
+
+          # Initialize changelog file (overwrite any existing content)
+          echo "" > "${CHANGELOG_FILE}"
 
           if [[ "${PREVIOUS_TAG:-EMPTY}" == "EMPTY" ]];
           then
             echo "📋 No previous tag found, generating changelog from beginning"
             
             # For first release, generate changelog for all commits
-            CHANGELOG=$(convco changelog --unreleased "$(echo ${CURRENT_TAG} | sed 's/^v//')" 2>/dev/null);
-            if [[ "${CHANGELOG:-EMPTY}" != "EMPTY" ]];
+            if convco changelog --unreleased "${CURRENT_TAG_STRIPPED}" > "${CHANGELOG_FILE}" 2>/dev/null;
             then
-              echo "✅ Generated changelog with convco"
+              echo "✅ Generated full changelog with convco"
             else
               echo "⚠️  convco failed, will use GitHub's built-in release notes instead"
-              CHANGELOG=""
+              echo "" > "${CHANGELOG_FILE}"
             fi
 
           else
             echo "📋 Generating changelog from ${PREVIOUS_TAG} to HEAD"
             
             # Generate changelog for the range between tags
-            CHANGELOG=$(convco changelog "${PREVIOUS_TAG}..HEAD" --max-versions ${CURRENT_TAG} 2>/dev/null);
-            if [[ "${CHANGELOG:-EMPTY}" != "EMPTY" ]];
+            if convco changelog "${PREVIOUS_TAG}..HEAD" --unreleased "${CURRENT_TAG_STRIPPED}" > "${CHANGELOG_FILE}" 2>/dev/null;
             then
-              echo "✅ Generated changelog with convco"
+              echo "✅ Generated diff changelog with convco"
             else
               echo "⚠️  convco failed, will use GitHub's built-in release notes instead"
-              CHANGELOG=""
+              echo "" > "${CHANGELOG_FILE}"
             fi
           fi
 
-          # If a changelog was successfully generated, save it to a file.
-          if [[ "${CHANGELOG:-EMPTY}" != "EMPTY" ]];
+          # Check if changelog was generated successfully
+          CHANGELOG_LINES=$(wc -l < "${CHANGELOG_FILE}" | tr -d ' ')
+
+          if [[ "${CHANGELOG_LINES}" -gt 1 ]];
           then
-            echo "$CHANGELOG" > /tmp/changelog.md
             echo "✅ Changelog generated successfully"
-            echo "📄 Changelog preview (first 20 lines):"
+            echo "📊 Total lines: ${CHANGELOG_LINES}"
+            echo "📄 Complete changelog content:"
             echo "===================="
-            head -20 /tmp/changelog.md
+            cat "${CHANGELOG_FILE}"
             echo "===================="
-            echo "📊 Total lines: $(wc -l < /tmp/changelog.md)"
           else
-            echo "⚠️  No changelog generated, will use GitHub's built-in release notes instead"
+            echo "⚠️  No meaningful changelog generated (${CHANGELOG_LINES} lines), will use GitHub's built-in release notes instead"
           fi
 
       - id: create_release
@@ -496,18 +541,49 @@ jobs:
             const isDraft = isCandidate;
             const isPrerelease = isCandidate;
 
-            // Try to read convco-generated changelog
+            // Changelog file location (may be empty if convco step was skipped)
+            const changelogFile = '${{ steps.generate_changelog.outputs.CHANGELOG_FILE }}' || '/tmp/changelog.md';
+
+            // Determine changelog tool priority:
+            // 1. Workflow input (manual trigger)
+            // 2. Repository variable 
+            // 3. Environment variable
+            // 4. Default to 'github'
+            const workflowInput = '${{ github.event.inputs.changelog_tool }}';
+            const repoVariable = '${{ vars.SEMVER_CHANGELOG_TOOL }}';
+            const envVariable = '${{ env.SEMVER_CHANGELOG_TOOL }}';
+
+            const semverChangelogTool = workflowInput || repoVariable || envVariable || 'github';
+
+            console.log(`📋 Changelog tool selection:`);
+            console.log(`   - Workflow input: ${workflowInput || 'not set'}`);
+            console.log(`   - Repository variable: ${repoVariable || 'not set'}`);
+            console.log(`   - Environment variable: ${envVariable || 'not set'}`);
+            console.log(`   - Selected tool: ${semverChangelogTool}`);
+
+            // Only try to use convco changelog if convco tool was selected
             let useConvcoChangelog = false;
             let convcoChangelog = '';
 
-            try {
-              convcoChangelog = fs.readFileSync('/tmp/changelog.md', 'utf8').trim();
-              if (convcoChangelog && !convcoChangelog.includes('No commits found')) {
-                useConvcoChangelog = true;
-                console.log('✅ Using convco-generated changelog');
+            if (semverChangelogTool === 'convco') {
+              try {
+                convcoChangelog = fs.readFileSync(changelogFile, 'utf8').trim();
+                
+                // Check if changelog has meaningful content (more than just empty lines)
+                const meaningfulLines = convcoChangelog.split('\n').filter(line => line.trim().length > 0);
+                
+                if (meaningfulLines.length > 1) {
+                  useConvcoChangelog = true;
+                  console.log('✅ Using convco-generated changelog');
+                } else {
+                  console.log('⚠️ Changelog file exists but contains no meaningful content, falling back to GitHub auto-generation');
+                }
+              } catch (error) {
+                console.log('⚠️ Could not read convco changelog, falling back to GitHub auto-generation');
+                console.log(`   Error: ${error.message}`);
               }
-            } catch (error) {
-              console.log('⚠️ Could not read convco changelog, will use GitHub auto-generation');
+            } else {
+              console.log('📝 Convco not selected, using GitHub auto-generated release notes');
             }
 
             let releaseBody = '';
@@ -527,6 +603,7 @@ jobs:
               `- **Type**: ${versionType.toUpperCase()} bump`,
               `- **Branch**: \`${{ github.ref_name }}\``,
               `- **Changelog**: ${useConvcoChangelog ? 'Generated by [convco](https://convco.github.io/changelog/) using conventional commits' : 'Auto-generated by GitHub'}`,
+              `- **Tool Selected**: \`${semverChangelogTool}\``,
               '',
               '<sub>*This release was automatically created by the semantic versioning workflow.*</sub>'
             ].join('\n');
@@ -535,23 +612,15 @@ jobs:
               
               console.log('📝 Using convco-generated release notes');
               
-              // Format the convco changelog with proper spacing
-              const formattedChangelog = convcoChangelog
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line.length > 0)
-                .join('\n');
-
               releaseBody = [
                 versionBadge,
                 '',
                 `This is a **${versionType.toUpperCase()}** version bump from the previous release.`,
                 warningSection,
-                '## What\'s Changed',
                 '',
-                formattedChangelog,
+                releaseDetails,
                 '',
-                releaseDetails
+                convcoChangelog
               ].join('\n').replace(/\n{3,}/g, '\n\n'); // Remove excessive line breaks
 
               generateReleaseNotes = false;
@@ -565,7 +634,9 @@ jobs:
                 '',
                 `This is a **${versionType.toUpperCase()}** version bump from the previous release.`,
                 warningSection,
-                releaseDetails
+                '',
+                releaseDetails,
+                ''
               ].join('\n').replace(/\n{3,}/g, '\n\n');
 
               generateReleaseNotes = true;
@@ -652,6 +723,11 @@ jobs:
             then
               RESULT="success"
               DESCRIPTION="Semantic version calculated: ${{ needs.semantic-version.outputs.semver || 'N/A' }}"
+            elif [[ "${{ needs.semantic-version.outputs.version-bump }}" == "false" ]];
+            then
+              RESULT="success"
+              VERSION_TYPE="${{ needs.semantic-version.outputs.version-type || 'N/A' }}"
+              DESCRIPTION="No version bump required (${VERSION_TYPE} change)"
             elif [[ "${{ needs.tag.result }}" == "success" && "${{ needs.release.result }}" == "success" ]];
             then
               RESULT="success"

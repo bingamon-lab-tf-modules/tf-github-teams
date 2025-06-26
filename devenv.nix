@@ -73,7 +73,7 @@ let
 
 in
 {
-  name = "tf-template";
+  name = "tf-github-teams";
 
   env = {
     PROJECT = config.name;

@@ -8,10 +8,15 @@
 # Variables
 ##################################################
 
+declare MODULE_HOME
+declare MODULE_TESTS
+
+MODULE_HOME="$(pwd)/module"
+
 if [[ -d "tests" ]]; then
-	MODULE_FOLDER="tests"
+	MODULE_TESTS="tests"
 elif [[ -d "module" ]]; then
-	MODULE_FOLDER="module"
+	MODULE_TESTS="module"
 else
 	echo "No module or tests folder found."
 	exit 1
@@ -67,12 +72,12 @@ function check_dependencies() {
 
 # Check if the module folder exists.
 function check_module_folder() {
-	if [[ ! -d ${MODULE_FOLDER} ]]; then
-		error "The module folder ${MODULE_FOLDER} does not exist."
+	if [[ ! -d ${MODULE_TESTS} ]]; then
+		error "The module folder ${MODULE_TESTS} does not exist."
 		return 1
 	fi
 
-	success "Module folder ${MODULE_FOLDER} exists."
+	success "Module folder ${MODULE_TESTS} exists."
 	return 0
 }
 
@@ -109,10 +114,15 @@ function generate_terraform_docs() {
 	local README_FILES
 	README_FILES=$(find . -name "README.md" -type f)
 
-	terraform-docs markdown . || {
-		error "Failed to generate the Terraform documentation."
+	if [[ -f ".terraform-docs.yml" ]]; then
+		terraform-docs --config .terraform-docs.yml "${MODULE_HOME}" || {
+			error "Failed to generate the Terraform documentation."
+			return 1
+		}
+	else
+		error "No configuration file found for Terraform documentation. Please create a .terraform-docs.yml file in the root of the repository."
 		return 1
-	}
+	fi
 
 	# Automatically stage any modified README.md files.
 	for README in ${README_FILES}; do
@@ -130,7 +140,7 @@ function generate_terraform_docs() {
 
 # Get the Terraform modules.
 function get_terraform_modules() {
-	tofu -chdir=${MODULE_FOLDER} get || {
+	tofu -chdir=${MODULE_TESTS} get || {
 		error "Failed to get the Terraform modules."
 		return 1
 	}
@@ -141,7 +151,7 @@ function get_terraform_modules() {
 
 # Initialize the Terraform code.
 function init_terraform_code() {
-	tofu -chdir=${MODULE_FOLDER} init -backend=false || {
+	tofu -chdir=${MODULE_TESTS} init -backend=false || {
 		error "Failed to initialize the Terraform code."
 		return 1
 	}
@@ -152,7 +162,7 @@ function init_terraform_code() {
 
 # Validate the Terraform code.
 function validate_terraform_code() {
-	tofu -chdir=${MODULE_FOLDER} validate || {
+	tofu -chdir=${MODULE_TESTS} validate || {
 		error "Failed to validate the Terraform code."
 		return 1
 	}
@@ -208,9 +218,9 @@ function scan_terraform_code() {
 # Remove the .terraform.lock.hcl file from the module folder.
 # The root module should manage the lock files for the sub-modules.
 function remove_terraform_lock_file() {
-	if [[ -f "${MODULE_FOLDER}/.terraform.lock.hcl" ]]; then
-		rm -f "${MODULE_FOLDER}/.terraform.lock.hcl"
-		git add "${MODULE_FOLDER}/.terraform.lock.hcl" 2>/dev/null || true
+	if [[ -f "${MODULE_TESTS}/.terraform.lock.hcl" ]]; then
+		rm -f "${MODULE_TESTS}/.terraform.lock.hcl"
+		git add "${MODULE_TESTS}/.terraform.lock.hcl" 2>/dev/null || true
 		info "Removed the file .terraform.lock.hcl from the module folder."
 	else
 		info "The file .terraform.lock.hcl does not exist in the module folder."

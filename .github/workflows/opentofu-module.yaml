@@ -19,8 +19,8 @@ on:  # yamllint disable-line rule:truthy
   # Module Publish (releases)
   release:
     types:
+      - prereleased
       - published
-      - released
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -76,8 +76,18 @@ jobs:
     steps:
       - id: checkout_repository
         name: Checkout repository
+        if: github.event_name != 'release'
         uses: actions/checkout@v4
         with:
+          lfs: false
+          submodules: recursive
+
+      - id: checkout_repository_tag
+        name: Checkout repository tag
+        if: github.event_name == 'release'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
           lfs: false
           submodules: recursive
 
@@ -116,6 +126,27 @@ jobs:
           fi
           echo "✅ OpenTofu format check passed"
 
+      - id: opentofu_docs_check
+        name: OpenTofu Documentation Check
+        shell: devenv shell --quiet bash -- -e {0}
+        run: |
+          echo "📚 Checking OpenTofu documentation..."
+          if command -v terraform-docs &> /dev/null;
+          then
+            # Check if README needs updating
+            if ! terraform-docs --output-check --config .terraform-docs.yml ${MODULE_HOME};
+            then
+              echo "❌ Module README.md is out of date!"
+              echo "💡 Run: tofu-docs ${MODULE_HOME} locally to update the README.md"
+              exit 1
+            fi
+            echo "✅ Documentation is up to date"
+            exit 0
+          else
+            echo "⚠️ terraform-docs not available, documentation check failed"
+            exit 1
+          fi
+
       - id: opentofu_init
         name: OpenTofu Init
         shell: devenv shell --quiet bash -- -e {0}
@@ -141,27 +172,6 @@ jobs:
             exit 1
           fi
           echo "✅ OpenTofu validation passed"
-
-      - id: opentofu_docs_check
-        name: OpenTofu Documentation Check
-        shell: devenv shell --quiet bash -- -e {0}
-        run: |
-          echo "📚 Checking OpenTofu documentation..."
-          if command -v terraform-docs &> /dev/null;
-          then
-            # Check if README needs updating
-            if ! terraform-docs --output-check --config .terraform-docs.yml ${MODULE_HOME};
-            then
-              echo "❌ Module README.md is out of date!"
-              echo "💡 Run: tofu-docs ${MODULE_HOME} locally to update the README.md"
-              exit 1
-            fi
-            echo "✅ Documentation is up to date"
-            exit 0
-          else
-            echo "⚠️ terraform-docs not available, documentation check failed"
-            exit 1
-          fi
 
       - id: opentofu_security_scan
         name: OpenTofu Security Scan
@@ -254,7 +264,6 @@ jobs:
     # Only run on releases and if build was successful
     if: |
       github.event_name == 'release' &&
-      github.event.action == 'published' &&
       needs.test.outputs.status == 'success'
 
     timeout-minutes: 30
@@ -267,10 +276,12 @@ jobs:
           - ubuntu-latest
 
     steps:
-      - id: checkout_repository
-        name: Checkout repository
+      - id: checkout_repository_tag
+        name: Checkout repository tag
+        if: github.event_name == 'release'
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.release.tag_name }}
           lfs: false
           submodules: recursive
 
@@ -300,9 +311,10 @@ jobs:
         name: Extract version from release
         run: |
           VERSION=${{ github.event.release.tag_name }}
-          VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          VERSION_STRIPPED=${VERSION#v}
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-          echo "📦 Publishing module version: ${VERSION}"
+          echo "VERSION_STRIPPED=${VERSION_STRIPPED}" >> $GITHUB_OUTPUT
+          echo "📦 Publishing module version: ${VERSION_STRIPPED}"
           echo "🏷️  Release name: ${{ github.event.release.name }}"
           echo "🔗 Release URL: ${{ github.event.release.html_url }}"
 
@@ -313,7 +325,7 @@ jobs:
           echo "📦 Creating module package..."
 
           # Create a clean package of the module
-          PACKAGE_NAME="${{ env.PROJECT }}-${{ steps.extract_version.outputs.VERSION }}"
+          PACKAGE_NAME="${{ env.PROJECT }}-${{ steps.extract_version.outputs.VERSION_STRIPPED }}"
 
           # Copy module files
           mkdir -p "/tmp/${PACKAGE_NAME}"
@@ -326,6 +338,7 @@ jobs:
           echo "PACKAGE_PATH=/tmp/${PACKAGE_NAME}.tar.gz" >> $GITHUB_OUTPUT
           echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
           echo "✅ Package created: ${PACKAGE_NAME}.tar.gz"
+          ls -la /tmp/${PACKAGE_NAME}
 
       - id: publish_artifactory
         name: Publish to Artifactory
@@ -363,7 +376,7 @@ jobs:
         run: |
           if [[ "${{ steps.publish_artifactory.outcome }}" == "success" || "${{ steps.publish_github_packages.outcome }}" == "success" ]]; then
             echo "✅ Module published successfully!"
-            echo "📦 Version: ${{ steps.extract_version.outputs.VERSION }}"
+            echo "📦 Version: ${{ steps.extract_version.outputs.VERSION_STRIPPED }}"
           else
             echo "❌ Module publishing failed!"
             exit 1
