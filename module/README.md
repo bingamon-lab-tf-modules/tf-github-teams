@@ -20,13 +20,13 @@ This module configures teams for a GitHub Organization.
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9.0 |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9.0 |
-| <a name="requirement_github"></a> [github](#requirement\_github) | 6.7.0 |
+| <a name="requirement_github"></a> [github](#requirement\_github) | ~> 6.13 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_github"></a> [github](#provider\_github) | 6.7.0 |
+| <a name="provider_github"></a> [github](#provider\_github) | 6.13.0 |
 
 ## Modules
 
@@ -36,10 +36,10 @@ No modules.
 
 | Name | Type |
 |------|------|
-| [github_team.this](https://registry.terraform.io/providers/integrations/github/6.7.0/docs/resources/team) | resource |
-| [github_team_membership.this](https://registry.terraform.io/providers/integrations/github/6.7.0/docs/resources/team_membership) | resource |
-| [github_enterprise.this](https://registry.terraform.io/providers/integrations/github/6.7.0/docs/data-sources/enterprise) | data source |
-| [github_organization.this](https://registry.terraform.io/providers/integrations/github/6.7.0/docs/data-sources/organization) | data source |
+| [github_team.this](https://registry.terraform.io/providers/integrations/github/latest/docs/resources/team) | resource |
+| [github_team_membership.this](https://registry.terraform.io/providers/integrations/github/latest/docs/resources/team_membership) | resource |
+| [github_enterprise.this](https://registry.terraform.io/providers/integrations/github/latest/docs/data-sources/enterprise) | data source |
+| [github_organization.this](https://registry.terraform.io/providers/integrations/github/latest/docs/data-sources/organization) | data source |
 
 ## Inputs
 
