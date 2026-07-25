@@ -10,4 +10,5 @@ resource "github_team" "this" {
   privacy     = try(each.value.privacy, "closed")
   ldap_dn     = try(each.value.ldap_dn, "")
 
+  notification_setting = each.value.notification_setting
 }
