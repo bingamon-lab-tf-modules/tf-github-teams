@@ -53,6 +53,7 @@ randomized
 recognize
 rrbutani
 sarif
+secmgr
 specializing
 synchronized
 terraformrc

@@ -17,13 +17,20 @@ variable "github_organization_name" {
   description = "Required. The name of the GitHub organization to create the team in."
 }
 
+variable "github_security_manager_team_slug" {
+  type        = string
+  description = "Slug of the team to grant the organization security_manager role. Null disables the grant."
+  default     = null
+}
+
 variable "github_teams" {
   type = list(object({
     # Team
-    name        = string
-    description = optional(string)
-    privacy     = optional(string)
-    ldap_dn     = optional(string)
+    name                 = string
+    description          = optional(string)
+    privacy              = optional(string)
+    ldap_dn              = optional(string)
+    notification_setting = optional(string, "notifications_enabled")
 
     # Team Members
     members = list(object({
@@ -57,6 +64,20 @@ variable "github_teams" {
     Team privacy must be one of 'secret', 'closed', or 'visible'.
 
     Please check your team configuration and ensure every team has a valid privacy setting.
+    EOT
+  }
+
+  validation {
+    condition = alltrue([
+      for team in var.github_teams :
+      contains(["notifications_enabled", "notifications_disabled"], team.notification_setting)
+    ])
+    error_message = <<EOT
+    ❌ Team notification setting validation has failed.
+
+    Team notification_setting must be either 'notifications_enabled' or 'notifications_disabled'.
+
+    Please check your team configuration and ensure every team has a valid notification setting.
     EOT
   }
 

@@ -20,6 +20,20 @@ module "test" {
           role     = "member"
         }
       ]
+    },
+    {
+      name                 = "My Security Team"
+      description          = "My Security Team"
+      privacy              = "closed"
+      notification_setting = "notifications_disabled"
+      members = [
+        {
+          username = "MyUser"
+          role     = "maintainer"
+        }
+      ]
     }
   ]
+
+  github_security_manager_team_slug = "my-security-team"
 }
