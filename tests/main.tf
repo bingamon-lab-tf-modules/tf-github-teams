@@ -5,8 +5,6 @@ module "test" {
     github = github.organization
   }
 
-  github_enterprise_slug = "MyEnterprise"
-
   github_organization_name = "MyOrganization"
 
   github_teams = [
