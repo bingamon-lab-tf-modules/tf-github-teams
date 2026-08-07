@@ -18,3 +18,24 @@ output "security_manager" {
     }
   ])
 }
+
+output "org_role_baselines" {
+  description = <<-EOT
+  Organization-wide baseline access per team, keyed by team slug.
+
+  `base_role` is GitHub's own statement of the permission the role confers,
+  expressed in ROLE vocabulary ("read", "triage", "write", "maintain", "admin").
+  Repository permissions use different words for the same levels - "pull" for
+  read and "push" for write - so a consumer comparing the two must translate.
+
+  Consumed by the caller to assert that no per-repository grant sits BELOW a
+  team's baseline, which GitHub would silently ignore.
+  EOT
+  value = {
+    for slug, role_name in local.team_org_roles : slug => {
+      role_name = role_name
+      role_id   = local.organization_roles_by_name[role_name].role_id
+      base_role = local.organization_roles_by_name[role_name].base_role
+    }
+  }
+}
