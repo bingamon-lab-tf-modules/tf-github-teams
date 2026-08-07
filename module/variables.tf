@@ -18,6 +18,24 @@ variable "github_teams" {
     ldap_dn              = optional(string)
     notification_setting = optional(string, "notifications_enabled")
 
+    # Organization-wide baseline access.
+    #
+    # The name of a GitHub organization role granted to this team, e.g.
+    # "all_repo_read", "all_repo_triage", "all_repo_write", "all_repo_maintain",
+    # "all_repo_admin". The role is resolved to its ID by name at plan time, as
+    # IDs are not guaranteed stable across organizations.
+    #
+    # An organization role grants its permission on EVERY repository in the
+    # organization, present and future, without creating any per-repository
+    # object. It is the baseline layer; per-repository grants
+    # (github_team_repository, managed by tf-github-repos) are the exception
+    # layer on top.
+    #
+    # ⚠️ GitHub applies the HIGHER of the two. A per-repository grant BELOW this
+    # baseline is silently inert - it will appear in configuration and be ignored
+    # in practice. See the org_role_baseline check in checks.tf.
+    org_role = optional(string, null)
+
     # Team Members
     members = list(object({
       username = string
